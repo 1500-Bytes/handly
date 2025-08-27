@@ -1,0 +1,15 @@
+Hello World
+Go Programming is awesome!
+This is a test file with multiple lines.
+Some lines are short.
+While others might be much longer and span across multiple 8-byte chunks because we're reading in small buffers.
+Line with special chars: !@#$%^&*()
+Numbers: 1234567890
+Empty lines next:
+
+Above was empty
+    Leading spaces
+Trailing spaces
+	Tab	indented
+Mixed   spacing
+End of file without newline
