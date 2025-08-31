@@ -111,17 +111,17 @@ func TestParseBody(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NotNil(t, r)
-	assert.Equal(t, "hello world!\n", string(r.Body))
+	assert.Equal(t, "hello world!\n", string(r.body))
 
-	// // Test: Body shorter than reported content length
-	// reader = &ChunkReader{
-	// 	data: "POST /submit HTTP/1.1\r\n" +
-	// 		"Host: localhost:3000\r\n" +
-	// 		"Content-Length: 20\r\n" +
-	// 		"\r\n" +
-	// 		"partial content",
-	// 	numOfBytesPerRead: 3,
-	// }
-	// r, err = RequestFromReader(reader)
-	// require.Error(t, err)
+	// Test: Body shorter than reported content length
+	reader = &ChunkReader{
+		data: "POST /submit HTTP/1.1\r\n" +
+			"Host: localhost:3000\r\n" +
+			"Content-Length: 20\r\n" +
+			"\r\n" +
+			"partial content",
+		numOfBytesPerRead: 3,
+	}
+	r, err = RequestFromReader(reader)
+	require.Error(t, err)
 }

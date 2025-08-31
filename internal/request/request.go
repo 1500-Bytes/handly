@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log/slog"
-	"strconv"
 
 	"github.com/merge/handly/internal/headers"
 )
@@ -33,7 +31,9 @@ type RequestLine struct {
 type Request struct {
 	RequestLine RequestLine
 	Headers     *headers.Headers
-	Body        string
+	body        string
+	bodyBuffer  []byte
+	bodyPos     int
 	state       parsetState
 }
 
@@ -41,27 +41,13 @@ func newRequest() *Request {
 	return &Request{
 		Headers: headers.NewHeaders(),
 		state:   StateInit,
-		Body:    "",
 	}
-}
-
-func getInt(h *headers.Headers, name string, defaultValue int) int {
-	value, exists := h.Get(name)
-	if !exists {
-		return defaultValue
-	}
-
-	v, err := strconv.Atoi(value)
-	if err != nil {
-		return defaultValue
-	}
-
-	return v
 }
 
 func (r *Request) hasBody() bool {
-	length := getInt(r.Headers, "content-length", 0)
+	length := r.Headers.GetInt("content-length", 0)
 	return length > 0
+
 }
 
 func (r *Request) Parse(data []byte) (int, error) {
@@ -105,28 +91,34 @@ outer:
 			}
 
 			read += n
-			slog.Info("StateHeader", "read", read)
 
 			if done {
 				if r.hasBody() {
+					length := r.Headers.GetInt("content-length", 0)
+
+					r.bodyBuffer = make([]byte, length)
+					r.bodyPos = 0
 					r.state = StateBody
 				} else {
 					r.state = StateDone
 				}
 			}
+
 		case StateBody:
-			length := getInt(r.Headers, "content-length", 0)
+			length := r.Headers.GetInt("content-length", 0)
 			if length == 0 {
 				r.state = StateDone
 				break outer
 			}
 
-			slog.Info("StateBody", "length-leb(r.body)", length-len(r.Body), "length currentData", len(currentData), "currentData", currentData, "read", read)
-			remaining := min(length-len(r.Body), len(currentData))
-			r.Body += string(currentData[:remaining])
+			remaining := min(length-r.bodyPos, len(currentData))
+			copy(r.bodyBuffer[r.bodyPos:], currentData[:remaining])
+
+			r.bodyPos += remaining
 			read += remaining
 
-			if len(r.Body) == length {
+			if r.bodyPos == length {
+				r.body = string(r.bodyBuffer) // Single conversion at end
 				r.state = StateDone
 			}
 		case StateDone:
@@ -147,7 +139,6 @@ func parseRequestLine(data []byte) (*RequestLine, int, error) {
 		return nil, 0, nil
 	}
 
-	slog.Info("parseRequestLine", "data", string(data))
 	startOfLine := data[:idx]
 	read := idx + len(SEPARATOR)
 
@@ -181,7 +172,6 @@ func RequestFromReader(r io.Reader) (*Request, error) {
 
 		bufLen += n
 		readN, err := request.Parse(buf[:bufLen])
-		slog.Info("RequestFromHeader", "readN", readN, "bufLen", bufLen)
 		if err != nil {
 			return nil, err
 		}
