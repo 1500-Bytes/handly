@@ -3,8 +3,8 @@ package headers
 import (
 	"bytes"
 	"fmt"
-	"log/slog"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -40,6 +40,12 @@ type Headers struct {
 	headers map[string]string
 }
 
+func NewHeaders() *Headers {
+	return &Headers{
+		headers: map[string]string{},
+	}
+}
+
 func (r *Headers) ForEach(cb func(n, v string)) {
 	keys := make([]string, 0, len(r.headers))
 	for k := range r.headers {
@@ -52,10 +58,18 @@ func (r *Headers) ForEach(cb func(n, v string)) {
 	}
 }
 
-func NewHeaders() *Headers {
-	return &Headers{
-		headers: map[string]string{},
+func (h *Headers) GetInt(name string, defaultValue int) int {
+	value, exists := h.Get(name)
+	if !exists {
+		return defaultValue
 	}
+
+	v, err := strconv.Atoi(value)
+	if err != nil {
+		return defaultValue
+	}
+
+	return v
 }
 
 func (h *Headers) Set(name, value string) {
@@ -73,13 +87,10 @@ func (h *Headers) Get(name string) (string, bool) {
 		return "", false
 	}
 
-	// slog.Info("getHeader", "name", name, "value", v)
-
 	return v, ok
 }
 
 func (h *Headers) parseHeader(fieldLine []byte) (string, string, error) {
-	slog.Info("parseHeader", "fieldLine", string(fieldLine))
 	parts := bytes.SplitN(fieldLine, []byte(":"), 2)
 	if len(parts) != 2 {
 		return "", "", ERR_BAD_HEADER
@@ -91,7 +102,6 @@ func (h *Headers) parseHeader(fieldLine []byte) (string, string, error) {
 		return "", "", ERR_BAD_HEADER
 	}
 
-	// slog.Info("header", "name", string(fieldName), "value", string(fieldValue))
 	return string(fieldName), string(fieldValue), nil
 }
 
@@ -104,8 +114,6 @@ func (h *Headers) Parse(data []byte) (int, bool, error) {
 		if idx == -1 {
 			break
 		}
-
-		slog.Info("parse header", "read", read)
 
 		// Empty header
 		if idx == 0 {
