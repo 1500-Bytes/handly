@@ -4,15 +4,22 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log/slog"
+	"strconv"
+
+	"github.com/merge/handly/internal/headers"
 )
 
 var (
 	SEPARATOR                                = []byte("\r\n")
 	StateInit                    parsetState = "initialized"
 	StateDone                    parsetState = "done"
+	StateBody                    parsetState = "body"
+	StateHeader                  parsetState = "header"
 	StateError                   parsetState = "error"
 	ERR_POISNED_REQUEST                      = fmt.Errorf("invalid request format")
 	ERR_UNSUPPORTED_HTTP_VERSION             = fmt.Errorf("unsupported http version")
+	ERR_REQ_IN_ERR_STATE                     = fmt.Errorf("request is in err state")
 )
 
 type parsetState string
@@ -25,27 +32,55 @@ type RequestLine struct {
 
 type Request struct {
 	RequestLine RequestLine
+	Headers     *headers.Headers
+	Body        string
 	state       parsetState
 }
 
 func newRequest() *Request {
 	return &Request{
-		state: StateInit,
+		Headers: headers.NewHeaders(),
+		state:   StateInit,
+		Body:    "",
 	}
 }
 
-func (r *Request) parse(data []byte) (int, error) {
+func getInt(h *headers.Headers, name string, defaultValue int) int {
+	value, exists := h.Get(name)
+	if !exists {
+		return defaultValue
+	}
+
+	v, err := strconv.Atoi(value)
+	if err != nil {
+		return defaultValue
+	}
+
+	return v
+}
+
+func (r *Request) hasBody() bool {
+	length := getInt(r.Headers, "content-length", 0)
+	return length > 0
+}
+
+func (r *Request) Parse(data []byte) (int, error) {
 	read := 0
 
 outer:
 	for {
+		currentData := data[read:]
+		if len(currentData) == 0 {
+			break outer
+		}
+
 		switch r.state {
 		case StateError:
-			r.state = StateError
-			break outer
+			return 0, ERR_REQ_IN_ERR_STATE
 		case StateInit:
-			rl, n, err := parseRequestLine(data[read:])
+			rl, n, err := parseRequestLine(currentData)
 			if err != nil {
+				r.state = StateError
 				return 0, err
 			}
 
@@ -55,8 +90,45 @@ outer:
 
 			r.RequestLine = *rl
 			read += n
-			r.state = StateDone
+			r.state = StateHeader
 
+		case StateHeader:
+			n, done, err := r.Headers.Parse(currentData)
+
+			if err != nil {
+				r.state = StateError
+				return 0, err
+			}
+
+			if n == 0 {
+				break outer
+			}
+
+			read += n
+			slog.Info("StateHeader", "read", read)
+
+			if done {
+				if r.hasBody() {
+					r.state = StateBody
+				} else {
+					r.state = StateDone
+				}
+			}
+		case StateBody:
+			length := getInt(r.Headers, "content-length", 0)
+			if length == 0 {
+				r.state = StateDone
+				break outer
+			}
+
+			slog.Info("StateBody", "length-leb(r.body)", length-len(r.Body), "length currentData", len(currentData), "currentData", currentData, "read", read)
+			remaining := min(length-len(r.Body), len(currentData))
+			r.Body += string(currentData[:remaining])
+			read += remaining
+
+			if len(r.Body) == length {
+				r.state = StateDone
+			}
 		case StateDone:
 			break outer
 		}
@@ -75,6 +147,7 @@ func parseRequestLine(data []byte) (*RequestLine, int, error) {
 		return nil, 0, nil
 	}
 
+	slog.Info("parseRequestLine", "data", string(data))
 	startOfLine := data[:idx]
 	read := idx + len(SEPARATOR)
 
@@ -84,7 +157,7 @@ func parseRequestLine(data []byte) (*RequestLine, int, error) {
 	}
 
 	httpParts := bytes.Split(parts[2], []byte("/"))
-	if len(httpParts) != 2 || string(parts[0]) != "GET" || string(httpParts[1]) != "1.1" {
+	if len(httpParts) != 2 || string(httpParts[1]) != "1.1" {
 		return nil, 0, ERR_POISNED_REQUEST
 	}
 
@@ -107,7 +180,8 @@ func RequestFromReader(r io.Reader) (*Request, error) {
 		}
 
 		bufLen += n
-		readN, err := request.parse(buf[:bufLen])
+		readN, err := request.Parse(buf[:bufLen])
+		slog.Info("RequestFromHeader", "readN", readN, "bufLen", bufLen)
 		if err != nil {
 			return nil, err
 		}
