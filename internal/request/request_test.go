@@ -35,7 +35,7 @@ func (cr *ChunkReader) Read(p []byte) (int, error) {
 func TestRequest(t *testing.T) {
 
 	reader := &ChunkReader{
-		data:              "GET / HTTP/1.1\r\nHost:localhost:4000\r\nUser-Agent: Go-http-client/1.1\r\n",
+		data:              "GET / HTTP/1.1\r\nHost:localhost:4000\r\nUser-Agent: Go-http-client/1.1\r\n\r\n ",
 		numOfBytesPerRead: 3,
 	}
 
@@ -47,29 +47,81 @@ func TestRequest(t *testing.T) {
 	assert.Equal(t, "1.1", r.RequestLine.HttpVersion)
 	assert.Equal(t, "/", r.RequestLine.RequestTarget)
 
-	// // Test: Check for target path
+	// Test: Check for target path
+	reader = &ChunkReader{
+		data:              "GET /cow HTTP/1.1\r\nHost:localhost:4000\r\nUser-Agent: Go-http-client/1.1\r\n\r\n  ",
+		numOfBytesPerRead: 1,
+	}
 
+	r, err = RequestFromReader(reader)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	assert.Equal(t, "1.1", r.RequestLine.HttpVersion)
+	assert.Equal(t, "GET", r.RequestLine.HttpMethod)
+	assert.Equal(t, "/cow", r.RequestLine.RequestTarget)
+
+	// Test:Invalid version
+	reader = &ChunkReader{
+		data:              "GET /cow HTTP/1.1\r\nHost:localhost:4000\r\nUser-Agent: Go-http-client/1.1\r\n\r\n  ",
+		numOfBytesPerRead: 2,
+	}
+	r, err = RequestFromReader(reader)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	assert.NotEqual(t, "1.0", r.RequestLine.HttpVersion)
+	assert.Equal(t, "GET", r.RequestLine.HttpMethod)
+	assert.Equal(t, "/cow", r.RequestLine.RequestTarget)
+}
+
+func TestParseHeaders(t *testing.T) {
+	// Test: Standard Headers
+	reader := &ChunkReader{
+		data:              "GET / HTTP/1.1\r\nHost: localhost:3000\r\nUser-Agent: curl/7.81.0\r\nAccept: */*\r\n\r\n",
+		numOfBytesPerRead: 3,
+	}
+	r, err := RequestFromReader(reader)
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	host, exists := r.Headers.Get("host")
+	assert.True(t, exists)
+	assert.Equal(t, "localhost:3000", host)
+	userAgent, exists := r.Headers.Get("user-agent")
+	assert.True(t, exists)
+	assert.Equal(t, "curl/7.81.0", userAgent)
+	accept, exists := r.Headers.Get("accept")
+	assert.True(t, exists)
+	assert.Equal(t, "*/*", accept)
+
+	// Test: Malformed Header
+	reader = &ChunkReader{
+		data:              "GET / HTTP/1.1\r\nHost localhost:3000\r\n\r\n",
+		numOfBytesPerRead: 3,
+	}
+	r, err = RequestFromReader(reader)
+	require.Error(t, err)
+}
+
+func TestParseBody(t *testing.T) {
+	// Test: Standard Body
+	reader := &ChunkReader{
+		data:              "POST /submit HTTP/1.1\r\nHost: localhost:3000\r\nContent-Length: 13\r\n\r\nhello world!\n",
+		numOfBytesPerRead: 3,
+	}
+	r, err := RequestFromReader(reader)
+	require.NoError(t, err)
+
+	require.NotNil(t, r)
+	assert.Equal(t, "hello world!\n", string(r.Body))
+
+	// // Test: Body shorter than reported content length
 	// reader = &ChunkReader{
-	// 	data:              "GET /cow HTTP/1.1\r\nHost:localhost:4000\r\nUser-Agent: Go-http-client/1.1\r\n",
-	// 	numOfBytesPerRead: 1,
-	// }
-
-	// r, err = RequestFromReader(reader)
-	// require.NoError(t, err)
-	// require.NotNil(t, r)
-	// assert.Equal(t, "1.1", r.RequestLine.HttpVersion)
-	// assert.Equal(t, "GET", r.RequestLine.HttpMethod)
-	// assert.Equal(t, "/cow", r.RequestLine.RequestTarget)
-
-	// // Test:Invalid version
-	// reader = &ChunkReader{
-	// 	data:              "GET /cow HTTP/1.1\r\nHost:localhost:4000\r\nUser-Agent: Go-http-client/1.1\r\n",
-	// 	numOfBytesPerRead: 2,
+	// 	data: "POST /submit HTTP/1.1\r\n" +
+	// 		"Host: localhost:3000\r\n" +
+	// 		"Content-Length: 20\r\n" +
+	// 		"\r\n" +
+	// 		"partial content",
+	// 	numOfBytesPerRead: 3,
 	// }
 	// r, err = RequestFromReader(reader)
-	// require.NoError(t, err)
-	// require.NotNil(t, r)
-	// assert.NotEqual(t, "1.0", r.RequestLine.HttpVersion)
-	// assert.Equal(t, "GET", r.RequestLine.HttpMethod)
-	// assert.Equal(t, "/cow", r.RequestLine.RequestTarget)
+	// require.Error(t, err)
 }
