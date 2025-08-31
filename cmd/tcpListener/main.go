@@ -5,7 +5,7 @@ import (
 	"log"
 	"net"
 
-	"github.com/merge/tcp_to_http/internal/request"
+	"github.com/merge/handly/internal/request"
 )
 
 func main() {
@@ -29,6 +29,10 @@ func main() {
 		fmt.Printf("- Method: %s\n", r.RequestLine.HttpMethod)
 		fmt.Printf("- Target: %s\n", r.RequestLine.RequestTarget)
 		fmt.Printf("- Version: %s\n", r.RequestLine.HttpVersion)
+		fmt.Println("Header: ")
+		r.Headers.ForEach(func(n, v string) {
+			fmt.Printf("%s: %s\n", n, v)
+		})
 	}
 
 }
