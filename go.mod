@@ -1,4 +1,4 @@
-module github.com/merge/tcp_to_http
+module github.com/merge/handly
 
 go 1.25.0
 
