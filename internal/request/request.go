@@ -31,7 +31,7 @@ type RequestLine struct {
 type Request struct {
 	RequestLine RequestLine
 	Headers     *headers.Headers
-	body        string
+	Body        string
 	bodyBuffer  []byte
 	bodyPos     int
 	state       parsetState
@@ -118,7 +118,7 @@ outer:
 			read += remaining
 
 			if r.bodyPos == length {
-				r.body = string(r.bodyBuffer) // Single conversion at end
+				r.Body = string(r.bodyBuffer) // Single conversion at end
 				r.state = StateDone
 			}
 		case StateDone:
