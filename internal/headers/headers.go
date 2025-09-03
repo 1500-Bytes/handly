@@ -72,6 +72,15 @@ func (h *Headers) GetInt(name string, defaultValue int) int {
 	return v
 }
 
+func (h *Headers) Get(name string) (string, bool) {
+	v, ok := h.headers[strings.ToLower(name)]
+	if !ok {
+		return "", false
+	}
+
+	return v, ok
+}
+
 func (h *Headers) Set(name, value string) {
 	fieldName := strings.ToLower(name)
 	if v, ok := h.headers[fieldName]; ok {
@@ -81,13 +90,14 @@ func (h *Headers) Set(name, value string) {
 	}
 }
 
-func (h *Headers) Get(name string) (string, bool) {
-	v, ok := h.headers[strings.ToLower(name)]
-	if !ok {
-		return "", false
-	}
+func (h *Headers) Replace(name, value string) {
+	fieldName := strings.ToLower(name)
+	h.headers[fieldName] = value
+}
 
-	return v, ok
+func (h *Headers) Delete(name string) {
+	fieldName := strings.ToLower(name)
+	delete(h.headers, fieldName)
 }
 
 func (h *Headers) parseHeader(fieldLine []byte) (string, string, error) {
